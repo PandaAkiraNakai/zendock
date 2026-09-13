@@ -156,3 +156,7 @@ generan los healthcheck se ignoran para no despertar el sondeo en balde.
 ## Licencia
 
 MIT. Ver [LICENSE](LICENSE).
+
+<!-- profile-excerpt -->
+**Gestor de contenedores Docker en la bandeja**, con la misma pinta que ZenMonitor: estado, salud, puertos, **CPU y RAM** de cada contenedor agrupados por proyecto de **compose**; encender, apagar y reiniciar uno o el **proyecto entero** (respetando `depends_on`), logs en vivo y shell dentro. **Detecta solas las webs** (sondea los puertos publicados y distingue una página de una API JSON) y **las apps de escritorio** de cada proyecto, y avisa si un contenedor se cae. Habla directo con la **API del Engine** por el socket unix.
+<!-- /profile-excerpt -->
