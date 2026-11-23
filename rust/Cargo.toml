@@ -1,0 +1,28 @@
+[package]
+name = "zendock"
+version = "2.0.0"
+edition = "2024"
+license = "MIT"
+description = "Los contenedores Docker en la bandeja del sistema, con una ventana aparte"
+publish = false
+
+[dependencies]
+# La ventana: egui pintado en la CPU (soft.rs) sobre winit + softbuffer, sin
+# OpenGL. winit y softbuffer cargan libwayland con dlopen: así el demonio de la
+# bandeja no la enlaza.
+egui = { version = "0.37", default-features = false, features = ["default_fonts"] }
+egui-winit = { version = "0.37", default-features = false, features = ["wayland", "x11"] }
+winit = { version = "0.30", default-features = false, features = ["rwh_06", "wayland", "wayland-dlopen", "wayland-csd-adwaita-notitle", "x11"] }
+softbuffer = { version = "0.4", default-features = false, features = ["wayland", "wayland-dlopen", "x11", "x11-dlopen"] }
+ksni = { version = "0.3.7", default-features = false, features = ["async-io", "blocking"] }
+zbus = { version = "5", default-features = false, features = ["async-io", "blocking-api"] }
+png = "0.18"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true

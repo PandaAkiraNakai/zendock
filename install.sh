@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Instala ZenDock para el usuario actual, dentro de ~/.local. No toca el sistema
-# ni pide root. Las rutas se generan aqui, por eso el repo no lleva ninguna fija.
+# ni pide root. Compila el binario de Rust (rust/) si hay cargo; si no, usa uno
+# ya compilado en rust/target/release/zendock.
 set -euo pipefail
 
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
@@ -8,53 +9,49 @@ CONF="${XDG_CONFIG_HOME:-$HOME/.config}"
 SHARE="$DATA/zendock"
 BIN="$HOME/.local/bin"
 ORIGEN="$(cd "$(dirname "$0")" && pwd)"
+BINARIO="$ORIGEN/rust/target/release/zendock"
 
 autostart=0
+compilar=1
 for arg in "$@"; do
     case "$arg" in
         --autostart) autostart=1 ;;
+        --sin-compilar) compilar=0 ;;
         -h|--help)
-            echo "uso: $0 [--autostart]"
-            echo "  --autostart  arranca con la sesion, en segundo plano (solo bandeja)"
+            echo "uso: $0 [--autostart] [--sin-compilar]"
+            echo "  --autostart     arranca con la sesión, en segundo plano (solo bandeja)"
+            echo "  --sin-compilar  usa el binario ya compilado en rust/target/release/"
             exit 0 ;;
-        *) echo "opcion desconocida: $arg" >&2; exit 1 ;;
+        *) echo "opción desconocida: $arg" >&2; exit 1 ;;
     esac
 done
 
-command -v python3 >/dev/null || { echo "hace falta python3" >&2; exit 1; }
-python3 -c "import PyQt6.QtWidgets, PyQt6.QtNetwork" 2>/dev/null || {
-    echo "hace falta PyQt6 (Arch: pacman -S python-pyqt6)" >&2; exit 1; }
+if [ "$compilar" = 1 ] && command -v cargo >/dev/null; then
+    echo "compilando (cargo build --release)…"
+    cargo build --release --manifest-path "$ORIGEN/rust/Cargo.toml"
+elif [ ! -x "$BINARIO" ]; then
+    echo "hace falta cargo para compilar ZenDock (Arch: pacman -S rust; o https://rustup.rs)" >&2
+    exit 1
+fi
 
 # Sin acceso al socket la app arranca igual, pero solo puede decir que no llega a Docker
 case "${DOCKER_HOST:-}" in
     unix://*) SOCK="${DOCKER_HOST#unix://}" ;;
     *)        SOCK=/var/run/docker.sock ;;
 esac
-if [ ! -w "$SOCK" ]; then
-    echo "AVISO: tu usuario no puede usar $SOCK. Arreglalo con:"
-    echo "       sudo usermod -aG docker \$USER   # y volver a iniciar sesion"
+if [ -e "$SOCK" ] && [ ! -w "$SOCK" ]; then
+    echo "AVISO: tu usuario no puede usar $SOCK. Arréglalo con:"
+    echo "       sudo usermod -aG docker \$USER   # y volver a iniciar sesión"
 fi
 
 install -d "$SHARE" "$BIN" "$DATA/applications"
-install -m 644 "$ORIGEN/zendock.py" "$SHARE/zendock.py"
+# install crea un fichero nuevo: un zendock que ya esté corriendo sigue con el viejo
+install -m 755 "$BINARIO" "$BIN/zendock"
+# restos de la versión en Python
+rm -rf "$SHARE/zendock.py" "$SHARE/__pycache__"
 
-# El icono se dibuja desde el vector que ya vive en el codigo, asi no hace falta
-# guardar ningun binario en el repositorio.
-QT_QPA_PLATFORM=offscreen python3 - "$SHARE" <<'PY'
-import sys
-from PyQt6.QtWidgets import QApplication
-sys.path.insert(0, sys.argv[1])
-app = QApplication([])
-import zendock as z
-z.dock_icon(z.BLUE, 256).pixmap(256, 256).save(sys.argv[1] + "/zendock.png")
-PY
-rm -rf "$SHARE/__pycache__"
-
-cat > "$BIN/zendock" <<LANZADOR
-#!/bin/sh
-exec python3 "$SHARE/zendock.py" "\$@"
-LANZADOR
-chmod +x "$BIN/zendock"
+# El icono lo dibuja el propio binario: así no hace falta guardar ningún PNG en el repo
+"$BIN/zendock" --write-icon "$SHARE/zendock.png"
 
 cat > "$DATA/applications/zendock.desktop" <<ESCRITORIO
 [Desktop Entry]
@@ -68,12 +65,14 @@ Terminal=false
 Categories=System;Monitor;
 Keywords=docker;contenedores;containers;compose;zendock;
 StartupNotify=true
+StartupWMClass=zendock
 ESCRITORIO
 
 # KWin no deja que una ventana ya abierta se traiga al frente sola: al pedir
-# activacion sin un token de Wayland la marca como que "reclama atencion" (el
+# activación sin un token de Wayland la marca como que "reclama atención" (el
 # parpadeo naranja en la barra de tareas) en vez de levantarla. Una regla de
-# ventana que desactive esa proteccion solo para ZenDock lo arregla.
+# ventana que desactive esa protección solo para ZenDock lo arregla. (En
+# Hyprland no hace falta: la segunda invocación usa hyprctl.)
 REGLA_ID="003852a2-9a52-45ba-ad0f-6236108cb53e"
 anadir_regla_kwin() {
     command -v kwriteconfig6 >/dev/null || return 0
@@ -94,7 +93,7 @@ anadir_regla_kwin() {
         "$(( $(printf '%s' "${previas:+$previas,}$REGLA_ID" | tr ',' '\n' | grep -c .) ))"
     gdbus call --session --dest org.kde.KWin --object-path /KWin \
         --method org.kde.KWin.reconfigure >/dev/null 2>&1 || true
-    echo "regla de KWin anadida (la ventana ya se trae al frente sola)"
+    echo "regla de KWin añadida (la ventana ya se trae al frente sola)"
 }
 anadir_regla_kwin
 
@@ -117,8 +116,12 @@ fi
 command -v update-desktop-database >/dev/null && \
     update-desktop-database "$DATA/applications" 2>/dev/null || true
 
-echo "instalado. Arrancalo con: $BIN/zendock"
+echo "instalado. Arráncalo con: $BIN/zendock --tray   (o abre la ventana con: $BIN/zendock)"
+if pgrep -x zendock >/dev/null 2>&1 || pgrep -f "zendock/[z]endock\.py" >/dev/null 2>&1; then
+    echo "ojo: hay un ZenDock en marcha con la versión anterior; ciérralo (menú de la bandeja > Salir)"
+    echo "     y vuelve a lanzar $BIN/zendock --tray para usar la nueva"
+fi
 case ":$PATH:" in
     *":$BIN:"*) ;;
-    *) echo "ojo: $BIN no esta en tu PATH" ;;
+    *) echo "ojo: $BIN no está en tu PATH" ;;
 esac
