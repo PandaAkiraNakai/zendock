@@ -695,6 +695,8 @@ def launch_app(app):
 def in_terminal(title, args):
     if shutil.which("konsole"):
         return QProcess.startDetached("konsole", ["-p", f"tabtitle={title}", "--hold", "-e", *args])[0]
+    if shutil.which("kitty"):
+        return QProcess.startDetached("kitty", ["--hold", "--title", title, *args])[0]
     for term in ("x-terminal-emulator", "kgx", "gnome-terminal", "xterm"):
         if shutil.which(term):
             return QProcess.startDetached(term, ["-e", *args])[0]
